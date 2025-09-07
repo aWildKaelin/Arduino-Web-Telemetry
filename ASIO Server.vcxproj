@@ -71,7 +71,7 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <IncludePath>D:\Visual Studio\Projects\ASIO Server\asio-1.36.0\include;$(IncludePath)</IncludePath>
+    <IncludePath>D:\Visual Studio\Projects\ASIO Server\json-develop\include;D:\Visual Studio\Projects\ASIO Server\asio-1.36.0\include;$(IncludePath)</IncludePath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>

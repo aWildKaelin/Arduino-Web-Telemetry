@@ -10,6 +10,8 @@
 #include <asio/ts/internet.hpp>
 #include <asio/ts/buffer.hpp>
 
+#include <nlohmann/json.hpp>
+
 
 asio::io_context context; //like a GL context
 asio::ip::tcp::socket HTMLsocket(context);
@@ -138,6 +140,10 @@ Connection: close
                     {
                         std::cout << "PUT:\n" << buffer << std::endl;
                         sendData = "HTTP/1.1 200 OK\r\n";
+
+                        size_t jsonIndex = buffer.find('{') != std::string::npos ? buffer.find('{') : NULL;
+                        nlohmann::json data = nlohmann::json::parse(buffer.c_str() + jsonIndex - 1);
+                        std::cout << data["varName"] << std::endl;
                     }
                     else
                     {
