@@ -17,7 +17,6 @@ In order to access the web interface, you must go to any browser, type the compu
 
 # TODO
 
-- parse data coming back from the web UI
 - parse CSV data coming from the microcontroller
 - make the CSV data actually affect the web UI
 - make the code more modular and easier to use, provide better examples
