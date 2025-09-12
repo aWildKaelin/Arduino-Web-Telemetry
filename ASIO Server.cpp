@@ -1,6 +1,7 @@
 #include <iostream>
 #include <string.h>
 #include <string>
+#include <unordered_map>
 
 #ifdef _WIN32
 #define _WIN32_WINNT 0x0A00
@@ -14,36 +15,20 @@
 
 
 asio::io_context context; //like a GL context
+
+// every socket needs an acceptor to actually receive new objects
+// one for website, one for robot
 asio::ip::tcp::socket HTMLsocket(context);
 asio::ip::tcp::acceptor HTMLacceptor(context, asio::ip::tcp::endpoint(asio::ip::tcp::v4(), 80));
 
 asio::ip::tcp::socket mouseSocket(context);
 asio::ip::tcp::acceptor mouseAcceptor(context, asio::ip::tcp::endpoint(asio::ip::tcp::v4(), 8084));
 
-std::string robotBuffer;
-char tempBuffer[1024];
 
-bool swapped = true;
+std::unordered_map<std::string, float> receiveStorage;  // receive from robot
+std::unordered_map<std::string, float> sendStorage;     // send to robot
 
-void enqueueWebInterface()
-{
-    HTMLacceptor.async_accept(HTMLsocket,
-        [&](asio::error_code ec) {
-            if (!ec)
-            {
-                char receiveBuffer[1024];
-                asio::error_code read_ec;
-                size_t bytes = HTMLsocket.read_some(asio::buffer(receiveBuffer), read_ec);
-
-                receiveBuffer[bytes] = '\0';
-                std::string buffer(receiveBuffer);
-                std::string sendData;
-
-                if (buffer.find("GET") != std::string::npos)
-                {
-                    if (strstr(buffer.c_str() + 3, "/ ") != 0)
-                    {
-                        sendData = R"html(
+std::string website = R"html(
 HTTP/1.1 200 OK
 Content-Type: text/html
 Connection: close
@@ -64,31 +49,47 @@ Connection: close
         <h1>Robot Name</h1>
         <hr>
 
+        <section id="varDisplay">
+        </section>
+        
+        <p id=""></p>
+
         <label for="in">input 1:</label>
         <input type="number" name="in1" step=".01" value="0">
         <br>
         <label for="in">input 2:</label>
         <input type="number" name="in2" step=".01" value="0">
 
-        <button type="button">Click Me!</button> 
-
-        <p id="textDisplayOne"></p>
-
-        
     </body>
 
     <script>
-        function updateWebsite(textDisplayOne){
+        function updateWebsite(){
             fetch('/update')
             .then(r => r.json())
-            .then(data => textDisplayOne.textContent = data.test);
+            .then(data => {
+                let varDisplay = document.querySelector("section");
+                
+                Object.keys(data).forEach(key => {
+                    console.log(`${key}: ${data[key]}`);
+                    let element = document.getElementById(`${key}`);;
+                    if(element)
+                        element.textContent = `${key}: ${data[key]}`;
+                    else
+                    {
+                        let newElement = document.createElement("p");
+                        newElement.id = `${key}`;
+                        newElement.textContent = `${key}: ${data[key]}`;
+                        varDisplay.appendChild(newElement);
+                    }
+                });
+            });
         }
 
         console.log("Hello from JavaScript!");
-        const textDisplayOne = document.getElementById("textDisplayOne");
-        textDisplayOne.textContent = "bingus";
         
-
+        var intervalID = setInterval(updateWebsite, 500);
+        
+        
         document.querySelectorAll("input").forEach(el => {
             el.addEventListener("input", numInputHandler);
         });
@@ -102,29 +103,40 @@ Connection: close
                 body: JSON.stringify({varName: param, var: value}),
             });
         }
-        
     </script>
 </html>
 )html";
 
+std::string robotBuffer;
+char tempBuffer[1024];  // used to ensure that all data arrives before processing to prevent errors
+
+void enqueueWebInterface()
+{
+    HTMLacceptor.async_accept(HTMLsocket,
+        [&](asio::error_code ec) {
+            if (!ec)
+            {
+                char receiveBuffer[1024];
+                asio::error_code read_ec;
+                size_t bytes = HTMLsocket.read_some(asio::buffer(receiveBuffer), read_ec);
+
+                receiveBuffer[bytes] = '\0';
+                std::string buffer(receiveBuffer);
+                std::string sendData;
+
+                if (buffer.find("GET") != std::string::npos)
+                {
+                    if (strstr(buffer.c_str() + 3, "/ ") != 0)
+                    {
+                        sendData = website;
+
                     }
                     else if (strstr(buffer.c_str() + 3, "/update") != 0)
                     {
-                        if (swapped)
-                        {
-                            sendData =
-                                "HTTP/1.1 200 OK\r\n"
-                                "Content-Type: text/json\r\n\r\n"
-                                "{\"test\":\"this is a test string\"}\r\n";
-                        }
-                        else
-                        {
-                            sendData =
-                                "HTTP/1.1 200 OK\r\n"
-                                "Content-Type: text/json\r\n\r\n"
-                                "{\"test\":\"this is another test string\"}\r\n";
-                        }
-                        swapped = !swapped;
+                        sendData =
+                            "HTTP/1.1 200 OK\r\n"
+                            "Content-Type: text/json\r\n\r\n"
+                            "{\"test\": \"this is a test string\", \"value\" : 26.4}";
                     }
                     else
                     {
@@ -162,7 +174,7 @@ Connection: close
 
                 enqueueWebInterface();
             }
-            else std::cout << ec.message() << std::endl;
+            else std::cout << "HTML Socket async_accept error! - \n" << ec.message() << std::endl;
         });
 }
 
@@ -180,69 +192,21 @@ void enqueueRobotInterface()
                 std::string sendData = "receive acknowledge\n";
 
                 mouseSocket.write_some(asio::buffer({ 0 }, 1), ec);
-                if(ec) std::cout << "write_some check - " << ec.message() << std::endl;
+                if(ec) std::cout << "Socket write_some error! - \n" << ec.message() << std::endl;
             }
             enqueueRobotInterface();
         }
-        else std::cerr << "general check - " << ec.message() << std::endl;
+        else std::cerr << "Robot Socket async_read_some error! - \n" << ec.message() << std::endl;
     });
 }
 
 
 int main(int argc, char** argv)
 {
-    /*
-    asio::ip::tcp::endpoint endpoint(asio::ip::make_address("104.230.16.86", ec), 17);
-    asio::ip::tcp::socket socket(context);
-
-    socket.connect(endpoint, ec); //reach endpoint
-    if (ec) std::cout << "failed to connect:\n" << ec.message() << std::endl;
-    else std::cout << "Connected!\n" << std::endl;
-
-    if (socket.is_open()) //if the socket is opened, not necessarily connected
+    for (int i = 0; i < argc; i++)
     {
-        std::string request = "hello from basic ASIO test\r\n";
-
-        //send
-        socket.write_some(asio::buffer(request.data(), request.size()), ec);
-
-        if (ec) std::cout << "Error!:\n" << ec.message() << std::endl;
-
-        //wait for data to appear
-        while (!socket.available());
-        size_t bytes = socket.available();
-
-        //receive
-        std::vector<char> vBuffer(bytes);
-        socket.read_some(asio::buffer(vBuffer.data(), vBuffer.size()), ec);
-
-        for (auto c : vBuffer)
-            std::cout << c;
-    }
-    */
-
-
-    /*
-    asio::ip::tcp::acceptor acceptor(context, asio::ip::tcp::endpoint(asio::ip::tcp::v4(), 80));
-    asio::ip::tcp::socket socket(context);
-
-    acceptor.accept(socket);
-
-    while (!socket.available());
-    size_t bytes = socket.available();
-
-    std::vector<char> vBuffer(bytes);
-    socket.read_some(asio::buffer(vBuffer.data(), vBuffer.size()), ec);
-
-    for (auto c : vBuffer)
-        std::cout << c;
-
-    std::string sendData = "HTTP/1.1 200 OK\r\n";
-
-    socket.write_some(asio::buffer(sendData.data(), sendData.size()), ec);
-    socket.close();
-    */
-
+        std::cout << argv[i] << std::endl;
+    }   
 
 
     //mouseAcceptor.accept(mouseSocket);
@@ -251,8 +215,6 @@ int main(int argc, char** argv)
     //enqueueRobotInterface();
     
     context.run(); // runs the queued tasks
-
-    //while (true);
 
     return 0;
 }
