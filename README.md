@@ -19,5 +19,5 @@ In order to access the web interface, you must go to any browser, type the compu
 
 - parse CSV data coming from the microcontroller
 - make the CSV data actually affect the web UI
-- make the code more modular and easier to use, provide better examples
+- provide better examples
 - add arduino code to repo
