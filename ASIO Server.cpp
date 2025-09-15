@@ -52,13 +52,10 @@ Connection: close
         <section id="varDisplay">
         </section>
         
-        <p id=""></p>
-
-        <label for="in">input 1:</label>
-        <input type="number" name="in1" step=".01" value="0">
         <br>
-        <label for="in">input 2:</label>
-        <input type="number" name="in2" step=".01" value="0">
+
+        <section id="varAdjust">
+        </section>
 
     </body>
 
@@ -67,7 +64,7 @@ Connection: close
             fetch('/update')
             .then(r => r.json())
             .then(data => {
-                let varDisplay = document.querySelector("section");
+                let varDisplay = document.getElementById("varDisplay");
                 
                 Object.keys(data).forEach(key => {
                     console.log(`${key}: ${data[key]}`);
@@ -84,6 +81,31 @@ Connection: close
                 });
             });
         }
+
+        fetch('/setup')
+            .then(r => r.json())
+            .then(data => {
+                let varDisplay = document.getElementById("varAdjust");
+                
+                Object.keys(data).forEach(key => {
+                    console.log(`${key}: ${data[key]}`);
+
+                    let newLabel = document.createElement("label");
+                    newLabel.textContent = `${key}: `;
+                    varDisplay.appendChild(newLabel);
+
+                    let newInput = document.createElement("input");
+                    newInput.name = `${key}`;
+                    newInput.type = "number";
+                    newInput.step = ".01";
+                    newInput.value = `${data[key]}`;
+                    varDisplay.appendChild(newInput);
+
+                    varDisplay.appendChild(document.createElement("br"));
+                });
+            });
+
+
 
         console.log("Hello from JavaScript!");
         
@@ -138,6 +160,14 @@ void enqueueWebInterface()
                             "Content-Type: text/json\r\n\r\n"
                             "{\"test\": \"this is a test string\", \"value\" : 26.4}";
                     }
+                    else if (strstr(buffer.c_str() + 3, "/setup") != 0)
+                    {
+                        sendData = "HTTP/1.1 200 OK\r\n"
+                            "Content-Type: text/json\r\n\r\n";
+                        nlohmann::json data;
+                        for (auto el : sendStorage) data[el.first] = el.second;
+                        sendData += data.dump();
+                    }
                     else
                     {
                         std::cout << "Invalid GET endpoint! Dumping:\n" << buffer << std::endl;
@@ -154,8 +184,15 @@ void enqueueWebInterface()
                         sendData = "HTTP/1.1 200 OK\r\n";
 
                         size_t jsonIndex = buffer.find('{') != std::string::npos ? buffer.find('{') : NULL;
-                        nlohmann::json data = nlohmann::json::parse(buffer.c_str() + jsonIndex - 1);
-                        std::cout << data["varName"] << std::endl;
+                        if (jsonIndex == NULL) std::cout << "NO JSON DATA AVAILABLE \n";
+                        else {
+                            nlohmann::json data = nlohmann::json::parse(buffer.c_str() + jsonIndex - 1);
+                            
+                            for (auto& el : data.items())
+                            {
+                                std::cout << "key: " << el.key() << ", value:" << el.value() << '\n';
+                            }
+                        }
                     }
                     else
                     {
@@ -207,6 +244,11 @@ int main(int argc, char** argv)
     {
         std::cout << argv[i] << std::endl;
     }   
+
+
+    sendStorage.insert({ "var1", 0.1f });
+    sendStorage.insert({ "var2", 642.6f });
+    sendStorage.insert({ "var3", 5.1f });
 
 
     //mouseAcceptor.accept(mouseSocket);
