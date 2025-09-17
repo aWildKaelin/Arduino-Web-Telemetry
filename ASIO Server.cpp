@@ -25,8 +25,8 @@ asio::ip::tcp::socket mouseSocket(context);
 asio::ip::tcp::acceptor mouseAcceptor(context, asio::ip::tcp::endpoint(asio::ip::tcp::v4(), 8084));
 
 
-std::unordered_map<std::string, float> receiveStorage;  // receive from robot
-std::unordered_map<std::string, float> sendStorage;     // send to robot
+std::unordered_map<std::string, int> receiveStorage;  // receive from robot
+std::unordered_map<std::string, int> sendStorage;     // send to robot
 
 std::string website = R"html(
 HTTP/1.1 200 OK
@@ -70,12 +70,12 @@ Connection: close
                     console.log(`${key}: ${data[key]}`);
                     let element = document.getElementById(`${key}`);;
                     if(element)
-                        element.textContent = `${key}: ${data[key]}`;
+                        element.textContent = `${key}: ${data[key] / 100}`;
                     else
                     {
                         let newElement = document.createElement("p");
                         newElement.id = `${key}`;
-                        newElement.textContent = `${key}: ${data[key]}`;
+                        newElement.textContent = `${key}: ${data[key] / 100}`;
                         varDisplay.appendChild(newElement);
                     }
                 });
@@ -98,7 +98,7 @@ Connection: close
                     newInput.name = `${key}`;
                     newInput.type = "number";
                     newInput.step = ".01";
-                    newInput.value = `${data[key]}`;
+                    newInput.value = `${data[key] / 100}`;
                     varDisplay.appendChild(newInput);
 
                     varDisplay.appendChild(document.createElement("br"));
@@ -122,7 +122,7 @@ Connection: close
             console.log(param, value);
             fetch("/update", {
                 method: "PUT",
-                body: JSON.stringify({varName: param, var: value}),
+                body: JSON.stringify({varName: param, var: (value * 100)}),
             });
         }
     </script>
@@ -155,15 +155,14 @@ void enqueueWebInterface()
                     }
                     else if (strstr(buffer.c_str() + 3, "/update") != 0)
                     {
-                        sendData =
-                            "HTTP/1.1 200 OK\r\n"
-                            "Content-Type: text/json\r\n\r\n"
-                            "{\"test\": \"this is a test string\", \"value\" : 26.4}";
+                        sendData = "HTTP/1.1 200 OK\r\nContent-Type: text/json\r\n\r\n";
+                        nlohmann::json data;
+                        for (auto el : receiveStorage) data[el.first] = el.second;
+                        sendData += data.dump();
                     }
                     else if (strstr(buffer.c_str() + 3, "/setup") != 0)
                     {
-                        sendData = "HTTP/1.1 200 OK\r\n"
-                            "Content-Type: text/json\r\n\r\n";
+                        sendData = "HTTP/1.1 200 OK\r\nContent-Type: text/json\r\n\r\n";
                         nlohmann::json data;
                         for (auto el : sendStorage) data[el.first] = el.second;
                         sendData += data.dump();
@@ -226,10 +225,26 @@ void enqueueRobotInterface()
             {
                 std::cout << "Got robot data:\n" << robotBuffer << std::endl;
 
-                std::string sendData = "receive acknowledge\n";
+                while (robotBuffer.size() != 0)
+                {
+                    if (robotBuffer[0] == '\r' && robotBuffer[1] == '\n')
+                    {
+                        robotBuffer.clear();
+                        // do send to robot code
+                    }
+                    else
+                    {
+                        int* ref = &receiveStorage[robotBuffer.substr(0, robotBuffer.find(',') != std::string::npos ? robotBuffer.find(',') : robotBuffer.size())];
+                        robotBuffer.erase(0, robotBuffer.find(',') != std::string::npos ? robotBuffer.find(',') + 1 : robotBuffer.size());
+                        *ref = atoi(robotBuffer.c_str());
+                        robotBuffer.erase(0, robotBuffer.find(',') != std::string::npos ? robotBuffer.find(',') + 1 : robotBuffer.size());
+                    }
+                }
 
-                mouseSocket.write_some(asio::buffer({ 0 }, 1), ec);
-                if(ec) std::cout << "Socket write_some error! - \n" << ec.message() << std::endl;
+                //std::string sendData = "receive acknowledge\n";
+
+                //mouseSocket.write_some(asio::buffer({ 0 }, 1), ec);
+                //if(ec) std::cout << "Socket write_some error! - \n" << ec.message() << std::endl;
             }
             enqueueRobotInterface();
         }
@@ -243,18 +258,28 @@ int main(int argc, char** argv)
     for (int i = 0; i < argc; i++)
     {
         std::cout << argv[i] << std::endl;
-    }   
+    }
 
 
-    sendStorage.insert({ "var1", 0.1f });
-    sendStorage.insert({ "var2", 642.6f });
-    sendStorage.insert({ "var3", 5.1f });
+    mouseAcceptor.accept(mouseSocket);
 
+    while (!mouseSocket.available());
+    std::cout << "init msg: ";
+    std::string setup;
+    while (mouseSocket.available()) {
+        mouseSocket.read_some(asio::buffer(tempBuffer, 1024));
+        setup += tempBuffer;
+    }
+    std::cout << setup;
 
-    //mouseAcceptor.accept(mouseSocket);
+    while (setup.size() != 0)
+    {
+        sendStorage[setup.substr(0, setup.find(',') != std::string::npos ? setup.find(',') : setup.size())] = 0;
+        setup.erase(0, setup.find(',') != std::string::npos ? setup.find(',') + 1 : setup.size());
+    }
 
     enqueueWebInterface();
-    //enqueueRobotInterface();
+    enqueueRobotInterface();
     
     context.run(); // runs the queued tasks
 
