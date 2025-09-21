@@ -27,6 +27,7 @@ asio::ip::tcp::acceptor mouseAcceptor(context, asio::ip::tcp::endpoint(asio::ip:
 
 std::unordered_map<std::string, int> receiveStorage;  // receive from robot
 std::unordered_map<std::string, int> sendStorage;     // send to robot
+std::list<std::string> orderedSendStorage;
 
 std::string website = R"html(
 HTTP/1.1 200 OK
@@ -109,7 +110,7 @@ Connection: close
 
         console.log("Hello from JavaScript!");
         
-        var intervalID = setInterval(updateWebsite, 500);
+        var intervalID = setInterval(updateWebsite, 100);
         
         
         document.querySelectorAll("input").forEach(el => {
@@ -230,7 +231,14 @@ void enqueueRobotInterface()
                     if (robotBuffer[0] == '\r' && robotBuffer[1] == '\n')
                     {
                         robotBuffer.clear();
-                        // do send to robot code
+                        std::string sendData = " ";
+                        for (std::string a : orderedSendStorage)
+                            sendData.append(std::to_string(sendStorage[a]));
+
+                        sendData[0] = char(sendData.length() < 256 ? sendData.length() : 255);
+
+                        mouseSocket.write_some(asio::buffer(sendData, sendData.size()), ec);
+                        if(ec) std::cout << "Socket write_some error! - \n" << ec.message() << std::endl;
                     }
                     else
                     {
@@ -275,6 +283,9 @@ int main(int argc, char** argv)
     while (setup.size() != 0)
     {
         sendStorage[setup.substr(0, setup.find(',') != std::string::npos ? setup.find(',') : setup.size())] = 0;
+        orderedSendStorage.push_back(setup.substr(0, setup.find(',') != std::string::npos ? setup.find(',') : setup.size()));
+        setup.erase(0, setup.find(',') != std::string::npos ? setup.find(',') + 1 : setup.size());
+        sendStorage[orderedSendStorage.back()] = atoi(setup.substr(0, setup.find(',') != std::string::npos ? setup.find(',') : setup.size()).c_str());
         setup.erase(0, setup.find(',') != std::string::npos ? setup.find(',') + 1 : setup.size());
     }
 
