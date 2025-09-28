@@ -17,3 +17,4 @@ To access the web interface, you must go to any browser, type the computer's IP 
 
 - fix issue where server processes incomplete data
 - test ability to send data back to arduino-compatible board
+- add a proper guide to README.md
